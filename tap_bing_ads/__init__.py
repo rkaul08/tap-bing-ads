@@ -159,11 +159,14 @@ def get_authentication():
     that fails.
     """
     # Represents an OAuth authorization object implementing the authorization code grant flow for use in a web application.
+    tenant_id = CONFIG.get('tenant_id', 'common')
+    
     try:
         authentication = OAuthWebAuthCodeGrant(
             CONFIG['oauth_client_id'],
             CONFIG['oauth_client_secret'],
-            '') ## redirect URL not needed for refresh token
+            '', ## redirect URL not needed for refresh token
+            tenant=tenant_id )
         # Retrieves OAuth access and refresh tokens from the Microsoft Account authorization service.
         authentication.request_oauth_tokens_by_refresh_token(CONFIG['refresh_token'])
         return authentication
