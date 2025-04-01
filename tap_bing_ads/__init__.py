@@ -404,6 +404,7 @@ def get_stream_def(stream_name, schema, stream_metadata=None, pks=None, replicat
             )
         )
 
+    mdata = metadata.write(mdata, (), 'selected', True)
     # Marking replication key as automatic
     if replication_keys:
         for replication_key in replication_keys:
