@@ -8,6 +8,7 @@ import re
 import io
 from datetime import datetime
 from zipfile import ZipFile
+from singer import Catalog
 
 import socket
 import ssl
@@ -1115,6 +1116,7 @@ async def main_impl():
         try:
             with open('catalog.json', 'r', encoding='utf-8') as f:
                 catalog = json.load(f)
+            catalog = Catalog.from_dict(catalog)
         except Exception as e:
             LOGGER.error(f"Failed to read catalog file: {str(e)}")
             raise
