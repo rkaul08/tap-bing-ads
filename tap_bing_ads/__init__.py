@@ -595,7 +595,7 @@ def do_discover(account_ids):
         raise
 
     # Also write to stdout for compatibility with singer spec
-    json.dump(catalog, sys.stdout, indent=2)
+    # json.dump(catalog, sys.stdout, indent=2)
     
     LOGGER.info("Finished discover")
 
