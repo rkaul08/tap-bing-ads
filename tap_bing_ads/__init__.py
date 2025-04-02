@@ -586,22 +586,7 @@ def do_discover(account_ids):
     LOGGER.info('Discovering reports')
     report_streams = discover_reports()
 
-    catalog = {'streams': core_object_streams + report_streams}
-    
-    try:    
-        with open('catalog.json', 'w', encoding='utf-8') as f:
-            json.dump(catalog, f, indent=2)
-        LOGGER.info("Successfully wrote catalog to catalog.json")
-    except Exception as e:
-        LOGGER.error(f"Failed to write catalog file: {str(e)}")
-        raise
-
-    # Also write to stdout for compatibility with singer spec
-    # json.dump(catalog, sys.stdout, indent=2)
-    
-    LOGGER.info("Finished discover")
-
-    #json.dump({'streams': core_object_streams + report_streams}, sys.stdout, indent=2)
+    json.dump({'streams': core_object_streams + report_streams}, sys.stdout, indent=2)
 
 
 def check_for_invalid_selections(prop, mdata, invalid_selections):
@@ -1113,16 +1098,7 @@ async def main_impl():
         await do_sync_all_accounts(account_ids, args.catalog)
         LOGGER.info("Sync Completed")
     else:
-        do_discover(account_ids)
-        try:
-            with open('catalog.json', 'r', encoding='utf-8') as f:
-                catalog = json.load(f)
-            catalog = Catalog.from_dict(catalog)
-        except Exception as e:
-            LOGGER.error(f"Failed to read catalog file: {str(e)}")
-            raise
-        #state = build_state(args.state, catalog)
-        await do_sync_all_accounts(account_ids, catalog)
+        LOGGER.info("No catalog was provided")
 
 def main():
     try:
