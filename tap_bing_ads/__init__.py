@@ -614,22 +614,37 @@ def get_selected_fields(catalog_item, exclude=None):
 
     mdata = metadata.to_map(catalog_item.metadata)
     selected_fields = []
+    report_name = pascalcase(catalog_item.stream.replace('_report', ''))
     
     # Get all fields except excluded ones
     for prop in catalog_item.schema.properties:
         if prop not in exclude:
             selected_fields.append(prop)
 
-    # Remove RelativeCtr if present with incompatible fields
-    incompatible_sets = {
-        'RelativeCtr': ['DeviceOS', 'TopVsOther', 'BidMatchType', 'DeliveredMatchType', 
-                       'CustomerId', 'CustomerName', 'Goal', 'GoalType']
-    }
-    
-    for field, incompatible_fields in incompatible_sets.items():
-        if field in selected_fields and any(f in selected_fields for f in incompatible_fields):
-            selected_fields.remove(field)
-            LOGGER.info(f"Automatically excluding {field} due to incompatible field combinations")
+    # Check for incompatible field combinations based on EXCLUSIONS
+    if report_name in EXCLUSIONS:
+        for exclusion_rule in EXCLUSIONS[report_name]:
+            attributes = exclusion_rule['Attributes']
+            impression_stats = exclusion_rule['ImpressionSharePerformanceStatistics']
+            
+            # If we have fields from both incompatible groups
+            if (any(attr in selected_fields for attr in attributes) and 
+                any(stat in selected_fields for stat in impression_stats)):
+                # Remove the impression share statistics
+                for stat in impression_stats:
+                    if stat in selected_fields:
+                        selected_fields.remove(stat)
+                        LOGGER.info(f"Removed {stat} from {report_name} due to incompatible field combinations")
+
+    # Always include required fields
+    required_fields = REPORT_REQUIRED_FIELDS.copy()
+    if report_name in REPORT_SPECIFIC_REQUIRED_FIELDS:
+        required_fields.extend(REPORT_SPECIFIC_REQUIRED_FIELDS[report_name])
+
+    for field in required_fields:
+        if field not in selected_fields and field not in exclude:
+            selected_fields.append(field)
+            LOGGER.info(f"Added required field {field} to {report_name}")
 
     return selected_fields
 
