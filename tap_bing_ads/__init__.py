@@ -8,6 +8,7 @@ import re
 import io
 from datetime import datetime
 from zipfile import ZipFile
+from singer import Catalog
 
 import socket
 import ssl
@@ -158,14 +159,15 @@ def get_authentication():
     fall back to the legacy method using the bingads.manage scope if
     that fails.
     """
-    tenant_id = CONFIG.get('tenant_id', 'common')
     # Represents an OAuth authorization object implementing the authorization code grant flow for use in a web application.
+    tenant_id = CONFIG.get('tenant_id', 'common')
+    
     try:
         authentication = OAuthWebAuthCodeGrant(
             CONFIG['oauth_client_id'],
             CONFIG['oauth_client_secret'],
-            '',
-        tenant=tenant_id ) ## redirect URL not needed for refresh token
+            '', ## redirect URL not needed for refresh token
+            tenant=tenant_id )
         # Retrieves OAuth access and refresh tokens from the Microsoft Account authorization service.
         authentication.request_oauth_tokens_by_refresh_token(CONFIG['refresh_token'])
         return authentication
@@ -220,7 +222,7 @@ def xml_to_json_type(xml_type):
     if xml_type == 'boolean':
         return 'boolean'
     if xml_type in ['decimal', 'float', 'double']:
-        return 'number'
+        return 'string'
     if xml_type in ['long', 'int', 'unsignedByte']:
         return 'integer'
 
@@ -402,6 +404,7 @@ def get_stream_def(stream_name, schema, stream_metadata=None, pks=None, replicat
             )
         )
 
+    mdata = metadata.write(mdata, (), 'selected', True)
     # Marking replication key as automatic
     if replication_keys:
         for replication_key in replication_keys:
@@ -583,7 +586,22 @@ def do_discover(account_ids):
     LOGGER.info('Discovering reports')
     report_streams = discover_reports()
 
-    json.dump({'streams': core_object_streams + report_streams}, sys.stdout, indent=2)
+    catalog = {'streams': core_object_streams + report_streams}
+    
+    try:    
+        with open('catalog.json', 'w', encoding='utf-8') as f:
+            json.dump(catalog, f, indent=2)
+        LOGGER.info("Successfully wrote catalog to catalog.json")
+    except Exception as e:
+        LOGGER.error(f"Failed to write catalog file: {str(e)}")
+        raise
+
+    # Also write to stdout for compatibility with singer spec
+    # json.dump(catalog, sys.stdout, indent=2)
+    
+    LOGGER.info("Finished discover")
+
+    #json.dump({'streams': core_object_streams + report_streams}, sys.stdout, indent=2)
 
 
 def check_for_invalid_selections(prop, mdata, invalid_selections):
@@ -1095,7 +1113,16 @@ async def main_impl():
         await do_sync_all_accounts(account_ids, args.catalog)
         LOGGER.info("Sync Completed")
     else:
-        LOGGER.info("No catalog was provided")
+        do_discover(account_ids)
+        try:
+            with open('catalog.json', 'r', encoding='utf-8') as f:
+                catalog = json.load(f)
+            catalog = Catalog.from_dict(catalog)
+        except Exception as e:
+            LOGGER.error(f"Failed to read catalog file: {str(e)}")
+            raise
+        #state = build_state(args.state, catalog)
+        await do_sync_all_accounts(account_ids, catalog)
 
 def main():
     try:
