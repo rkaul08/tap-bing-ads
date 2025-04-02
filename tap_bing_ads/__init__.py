@@ -605,7 +605,7 @@ def check_for_invalid_selections(prop, mdata, invalid_selections):
 
 
 def get_selected_fields(catalog_item, exclude=None):
-    # Get selected fields only
+    """Get selected fields while respecting field compatibility rules"""
     if not catalog_item.metadata:
         return None
 
@@ -614,18 +614,23 @@ def get_selected_fields(catalog_item, exclude=None):
 
     mdata = metadata.to_map(catalog_item.metadata)
     selected_fields = []
-    invalid_selections = {}
+    
+    # Get all fields except excluded ones
     for prop in catalog_item.schema.properties:
-        check_for_invalid_selections(prop, mdata, invalid_selections)
-        if prop not in exclude and \
-           ((catalog_item.key_properties and prop in catalog_item.key_properties) or \
-            metadata.get(mdata, ('properties', prop), 'inclusion') == 'automatic' or \
-            metadata.get(mdata, ('properties', prop), 'selected') is True):
+        if prop not in exclude:
             selected_fields.append(prop)
 
-    # Raise Exception if incompatible fields are selected
-    if any(invalid_selections):
-        raise Exception("Invalid selections for field(s) - {{ FieldName: [IncompatibleFields] }}:\n{}".format(json.dumps(invalid_selections, indent=4)))
+    # Remove RelativeCtr if present with incompatible fields
+    incompatible_sets = {
+        'RelativeCtr': ['DeviceOS', 'TopVsOther', 'BidMatchType', 'DeliveredMatchType', 
+                       'CustomerId', 'CustomerName', 'Goal', 'GoalType']
+    }
+    
+    for field, incompatible_fields in incompatible_sets.items():
+        if field in selected_fields and any(f in selected_fields for f in incompatible_fields):
+            selected_fields.remove(field)
+            LOGGER.info(f"Automatically excluding {field} due to incompatible field combinations")
+
     return selected_fields
 
 def filter_selected_fields(selected_fields, obj):
