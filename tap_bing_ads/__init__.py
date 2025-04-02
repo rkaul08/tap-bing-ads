@@ -606,6 +606,9 @@ def check_for_invalid_selections(prop, mdata, invalid_selections):
 
 def get_selected_fields(catalog_item, exclude=None):
     """Get selected fields while respecting field compatibility rules"""
+    from tap_bing_ads.reports import REPORT_REQUIRED_FIELDS, REPORT_SPECIFIC_REQUIRED_FIELDS
+    from tap_bing_ads.exclusions import EXCLUSIONS
+    
     if not catalog_item.metadata:
         return None
 
