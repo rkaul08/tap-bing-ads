@@ -221,7 +221,7 @@ def xml_to_json_type(xml_type):
     if xml_type == 'boolean':
         return 'boolean'
     if xml_type in ['decimal', 'float', 'double']:
-        return 'number'
+        return 'string'
     if xml_type in ['long', 'int', 'unsignedByte']:
         return 'integer'
 
