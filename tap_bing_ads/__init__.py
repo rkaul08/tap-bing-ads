@@ -8,7 +8,6 @@ import re
 import io
 from datetime import datetime
 from zipfile import ZipFile
-from singer import Catalog
 
 import socket
 import ssl
@@ -166,8 +165,8 @@ def get_authentication():
         authentication = OAuthWebAuthCodeGrant(
             CONFIG['oauth_client_id'],
             CONFIG['oauth_client_secret'],
-            '', ## redirect URL not needed for refresh token
-            tenant=tenant_id )
+            '',  ## redirect URL not needed for refresh token
+            tenant=tenant_id ) 
         # Retrieves OAuth access and refresh tokens from the Microsoft Account authorization service.
         authentication.request_oauth_tokens_by_refresh_token(CONFIG['refresh_token'])
         return authentication
@@ -222,7 +221,7 @@ def xml_to_json_type(xml_type):
     if xml_type == 'boolean':
         return 'boolean'
     if xml_type in ['decimal', 'float', 'double']:
-        return 'string'
+        return 'number'
     if xml_type in ['long', 'int', 'unsignedByte']:
         return 'integer'
 
@@ -404,7 +403,6 @@ def get_stream_def(stream_name, schema, stream_metadata=None, pks=None, replicat
             )
         )
 
-    mdata = metadata.write(mdata, (), 'selected', True)
     # Marking replication key as automatic
     if replication_keys:
         for replication_key in replication_keys:
@@ -596,19 +594,18 @@ def check_for_invalid_selections(prop, mdata, invalid_selections):
     if field_exclusions and is_prop_selected:
         for exclusion in field_exclusions:
             is_exclusion_selected = metadata.get(mdata, tuple(exclusion), 'selected')
-            if not is_exclusion_selected:
-                continue
-            if invalid_selections.get(prop):
-                invalid_selections[prop].append(exclusion[1])
-            else:
-                invalid_selections[prop] = [exclusion[1]]
+            if is_exclusion_selected:
+                if prop in ['Impressions', 'Clicks', 'Spend']:  # Keep measurement columns
+                    metadata.write(mdata, tuple(exclusion), 'selected', False)
+                    LOGGER.warning(f"Deselected {exclusion[1]} to keep {prop}")
+                else:
+                    metadata.write(mdata, ('properties', prop), 'selected', False)
+                    LOGGER.warning(f"Deselected {prop} to keep {exclusion[1]}")
+                return
 
 
 def get_selected_fields(catalog_item, exclude=None):
-    """Get selected fields while respecting field compatibility rules"""
-    from tap_bing_ads.reports import REPORT_REQUIRED_FIELDS, REPORT_SPECIFIC_REQUIRED_FIELDS
-    from tap_bing_ads.exclusions import EXCLUSIONS
-    
+    # Get selected fields only
     if not catalog_item.metadata:
         return None
 
@@ -617,38 +614,18 @@ def get_selected_fields(catalog_item, exclude=None):
 
     mdata = metadata.to_map(catalog_item.metadata)
     selected_fields = []
-    report_name = pascalcase(catalog_item.stream.replace('_report', ''))
-    
-    # Get all fields except excluded ones
+    invalid_selections = {}
     for prop in catalog_item.schema.properties:
-        if prop not in exclude:
+        check_for_invalid_selections(prop, mdata, invalid_selections)
+        if prop not in exclude and \
+           ((catalog_item.key_properties and prop in catalog_item.key_properties) or \
+            metadata.get(mdata, ('properties', prop), 'inclusion') == 'automatic' or \
+            metadata.get(mdata, ('properties', prop), 'selected') is True):
             selected_fields.append(prop)
 
-    # Check for incompatible field combinations based on EXCLUSIONS
-    if report_name in EXCLUSIONS:
-        for exclusion_rule in EXCLUSIONS[report_name]:
-            attributes = exclusion_rule['Attributes']
-            impression_stats = exclusion_rule['ImpressionSharePerformanceStatistics']
-            
-            # If we have fields from both incompatible groups
-            if (any(attr in selected_fields for attr in attributes) and 
-                any(stat in selected_fields for stat in impression_stats)):
-                # Remove the impression share statistics
-                for stat in impression_stats:
-                    if stat in selected_fields:
-                        selected_fields.remove(stat)
-                        LOGGER.info(f"Removed {stat} from {report_name} due to incompatible field combinations")
-
-    # Always include required fields
-    required_fields = REPORT_REQUIRED_FIELDS.copy()
-    if report_name in REPORT_SPECIFIC_REQUIRED_FIELDS:
-        required_fields.extend(REPORT_SPECIFIC_REQUIRED_FIELDS[report_name])
-
-    for field in required_fields:
-        if field not in selected_fields and field not in exclude:
-            selected_fields.append(field)
-            LOGGER.info(f"Added required field {field} to {report_name}")
-
+    # Raise Exception if incompatible fields are selected
+    if any(invalid_selections):
+        raise Exception("Invalid selections for field(s) - {{ FieldName: [IncompatibleFields] }}:\n{}".format(json.dumps(invalid_selections, indent=4)))
     return selected_fields
 
 def filter_selected_fields(selected_fields, obj):
